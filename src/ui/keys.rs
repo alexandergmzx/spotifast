@@ -170,6 +170,27 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
     if forward {
         app.actions.push(Action::Forward);
     }
+    // The Back key of a TV remote or a multimedia keyboard (XF86Back on
+    // Linux): the remote's only way out of anything. It closes what is open
+    // first, the way Escape does, and otherwise goes back a page like the
+    // mouse's back button.
+    if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::BrowserBack)) {
+        if app.dialog.is_some() {
+            app.actions.push(Action::CloseDialog);
+        } else if egui::Popup::is_any_open(ctx) {
+            egui::Popup::close_all(ctx);
+        } else if editing_text {
+            if let Some(field) = ctx.memory(|memory| memory.focused()) {
+                ctx.memory_mut(|memory| memory.surrender_focus(field));
+            }
+        } else if app.show_devices {
+            app.show_devices = false;
+        } else if app.lyrics_fullscreen.is_some() {
+            app.actions.push(Action::SetLyricsFullscreen(false));
+        } else {
+            app.actions.push(Action::Back);
+        }
+    }
     if ctx.input(|input| input.key_pressed(Key::Escape)) {
         if app.dialog.is_some() {
             app.actions.push(Action::CloseDialog);
@@ -452,6 +473,28 @@ mod tests {
             frame(&mut app, &mut text, press(Key::ArrowLeft, Modifiers::ALT)),
             format!("{:?}", [Action::Back])
         );
+        // A remote's Back key goes back too.
+        assert_eq!(
+            frame(
+                &mut app,
+                &mut text,
+                press(Key::BrowserBack, Modifiers::NONE)
+            ),
+            format!("{:?}", [Action::Back])
+        );
+        // In a text field it only leaves the field.
+        ctx.memory_mut(|memory| memory.request_focus(field));
+        frame(&mut app, &mut text, vec![]);
+        assert_eq!(
+            frame(
+                &mut app,
+                &mut text,
+                press(Key::BrowserBack, Modifiers::NONE)
+            ),
+            "[]",
+            "Back in a text field must not leave the page"
+        );
+        assert!(!ctx.memory(|memory| memory.has_focus(field)));
         // A focused non-text row still receives player/navigation shortcuts.
         ctx.memory_mut(|memory| memory.request_focus(row));
         frame(&mut app, &mut text, vec![]);
